@@ -11,6 +11,7 @@ import httpx
 import truststore
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
@@ -45,9 +46,28 @@ llm = ChatOpenAI(
 )
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
-SYSTEM_PROMPT = (_PROMPTS_DIR / "system.md").read_text()
+_BEHAVIORS_DIR = _PROMPTS_DIR / "behaviors"
 
-agent_executor = create_react_agent(llm, [get_weather, review_pr], prompt=SYSTEM_PROMPT)
+agent_executor = create_react_agent(llm, [get_weather, review_pr])
+
+
+def detect_behavior(message: str) -> str | None:
+    available = [f.stem for f in _BEHAVIORS_DIR.glob("*.md")]
+    if not available:
+        return None
+    resp = llm.invoke(
+        f"Classify the user's intent into one of: {available} or 'none'.\n"
+        f"Reply with only the intent name, no explanation.\nUser: {message}"
+    )
+    result = resp.content.strip().lower()
+    return result if result in available else None
+
+
+def load_system_prompt(behavior: str | None) -> str:
+    base = (_PROMPTS_DIR / "system.md").read_text()
+    if behavior:
+        return base + "\n\n" + (_BEHAVIORS_DIR / f"{behavior}.md").read_text()
+    return base
 
 app = FastAPI(title="opsAgent", description="OpsAgent demo API")
 
@@ -63,7 +83,14 @@ class ChatResponse(BaseModel):
 
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
-    response = agent_executor.invoke({"messages": [("user", req.message)]})
+    behavior = detect_behavior(req.message)
+    system_prompt = load_system_prompt(behavior)
+    response = agent_executor.invoke({
+        "messages": [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=req.message),
+        ]
+    })
     messages = response.get("messages", [])
 
     # Extract tool call names from intermediate messages

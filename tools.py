@@ -1,14 +1,17 @@
 import os
 import re
-from pathlib import Path
 
 import httpx
 from langchain_core.tools import tool
 
-_PROMPTS_DIR = Path(__file__).parent / "prompts"
-
-@tool(description=(_PROMPTS_DIR / "review_pr.md").read_text())
+@tool
 def review_pr(pr_url: str) -> str:
+    """Fetches the diff of a GitHub Pull Request.
+
+    Use this tool when the user asks to review a PR or wants feedback on changed code.
+    Input: pr_url — full URL of the pull request.
+    Example: pr_url='https://alm-github.my-company.com/my-project/my-repo/pull/1'
+    """
     github_token = os.getenv("GITHUB_TOKEN", "")
     if not github_token:
         return "GITHUB_TOKEN is not set."
