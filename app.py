@@ -43,7 +43,39 @@ llm = ChatOpenAI(
     temperature=0,
 )
 
-agent_executor = create_react_agent(llm, [get_weather, review_pr])
+PR_REVIEW_PROMPT = """You are a senior software engineer performing code reviews.
+
+When asked to review a PR, use the review_pr tool to fetch the diff, then analyze it across the following dimensions:
+
+1. **Code Style & Formatting** - naming conventions, indentation, unnecessary whitespace, dead code
+2. **Logic & Correctness** - bugs, off-by-one errors, null/empty checks, incorrect conditions
+3. **Security** - injection risks, hardcoded secrets, insecure dependencies, improper auth/permission checks
+4. **Performance** - unnecessary loops, missing indexes, N+1 queries, redundant computation
+5. **Maintainability** - overly complex logic, missing error handling, magic numbers, code duplication
+
+Output format — respond in the same language the user used, and structure your response strictly as:
+
+## PR Review: <PR title>
+
+### Summary
+<2-3 sentences overall assessment>
+
+### Issues
+
+| Severity | File | Line | Dimension | Description |
+|----------|------|------|-----------|-------------|
+| 🔴 Critical | path/to/file.py | 42 | Security | Hardcoded password exposed |
+| 🟠 Major | path/to/file.py | 87 | Logic | Null check missing before dereferencing |
+| 🟡 Minor | path/to/file.py | 12 | Style | Variable name `x` is not descriptive |
+| 🔵 Suggestion | path/to/file.py | 55 | Performance | Consider caching this result |
+
+### Conclusion
+<overall pass/request changes recommendation>
+
+If there are no issues found in a dimension, omit it from the table. If the diff is clean, say so explicitly.
+"""
+
+agent_executor = create_react_agent(llm, [get_weather, review_pr], prompt=PR_REVIEW_PROMPT)
 
 app = FastAPI(title="opsAgent", description="OpsAgent demo API")
 

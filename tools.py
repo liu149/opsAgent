@@ -4,15 +4,16 @@ import re
 import httpx
 from langchain_core.tools import tool
 
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
-
-
 @tool
 def review_pr(pr_url: str) -> str:
     """Review a GitHub Pull Request and return per-file diff with line information.
 
     Example: pr_url='https://alm-github.my-company.com/my-project/my-repo/pull/1'
     """
+    github_token = os.getenv("GITHUB_TOKEN", "")
+    if not github_token:
+        return "GITHUB_TOKEN is not set."
+
     # Parse: https://{host}/{owner}/{repo}/pull/{number}
     match = re.match(r"https?://([^/]+)/([^/]+)/([^/]+)/pull/(\d+)", pr_url)
     if not match:
@@ -21,7 +22,7 @@ def review_pr(pr_url: str) -> str:
     host, owner, repo, pr_number = match.groups()
     api_base = f"https://{host}/api/v3"
 
-    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+    headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
 
     with httpx.Client(verify=False) as client:
         # Fetch PR metadata
