@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 
-from tools import get_weather
+from tools import get_weather, review_pr
 
 load_dotenv()
 MODEL = os.getenv("AI_MODEL", "undefined")
@@ -43,7 +43,7 @@ llm = ChatOpenAI(
     temperature=0,
 )
 
-agent_executor = create_react_agent(llm, [get_weather])
+agent_executor = create_react_agent(llm, [get_weather, review_pr])
 
 app = FastAPI(title="opsAgent", description="OpsAgent demo API")
 

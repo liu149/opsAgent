@@ -1,4 +1,63 @@
+import os
+import re
+
+import httpx
 from langchain_core.tools import tool
+
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+
+
+@tool
+def review_pr(pr_url: str) -> str:
+    """Review a GitHub Pull Request and return per-file diff with line information.
+
+    Example: pr_url='https://alm-github.my-company.com/my-project/my-repo/pull/1'
+    """
+    # Parse: https://{host}/{owner}/{repo}/pull/{number}
+    match = re.match(r"https?://([^/]+)/([^/]+)/([^/]+)/pull/(\d+)", pr_url)
+    if not match:
+        return f"Invalid PR URL format: {pr_url}"
+
+    host, owner, repo, pr_number = match.groups()
+    api_base = f"https://{host}/api/v3"
+
+    headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+
+    with httpx.Client(verify=False) as client:
+        # Fetch PR metadata
+        pr_resp = client.get(f"{api_base}/repos/{owner}/{repo}/pulls/{pr_number}", headers=headers)
+        if pr_resp.status_code != 200:
+            return f"Failed to fetch PR: HTTP {pr_resp.status_code} - {pr_resp.text}"
+        pr_info = pr_resp.json()
+
+        # Fetch changed files with patch (diff)
+        files_resp = client.get(
+            f"{api_base}/repos/{owner}/{repo}/pulls/{pr_number}/files",
+            headers=headers,
+            params={"per_page": 100},
+        )
+        if files_resp.status_code != 200:
+            return f"Failed to fetch PR files: HTTP {files_resp.status_code} - {files_resp.text}"
+        files = files_resp.json()
+
+    lines = [
+        f"PR #{pr_number}: {pr_info.get('title', '')}",
+        f"Author: {pr_info.get('user', {}).get('login', '')}",
+        f"Base: {pr_info.get('base', {}).get('ref', '')}  ←  Head: {pr_info.get('head', {}).get('ref', '')}",
+        f"Files changed: {len(files)}",
+        "",
+    ]
+
+    for f in files:
+        lines.append(f"### {f['filename']} ({f['status']}, +{f['additions']} -{f['deletions']})")
+        patch = f.get("patch", "")
+        if patch:
+            lines.append(patch)
+        else:
+            lines.append("(binary or no diff available)")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 @tool

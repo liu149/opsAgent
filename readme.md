@@ -15,6 +15,7 @@ AI_MODEL=
 AI_BASE_URL=
 AI_USER=
 AI_AMTOKEN=
+GITHUB_TOKEN=   # GitHub Enterprise personal access token (repo scope)
 ```
 
 ## Start
