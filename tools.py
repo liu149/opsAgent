@@ -1,15 +1,14 @@
 import os
 import re
+from pathlib import Path
 
 import httpx
 from langchain_core.tools import tool
 
-@tool
-def review_pr(pr_url: str) -> str:
-    """Review a GitHub Pull Request and return per-file diff with line information.
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-    Example: pr_url='https://alm-github.my-company.com/my-project/my-repo/pull/1'
-    """
+@tool(description=(_PROMPTS_DIR / "review_pr.md").read_text())
+def review_pr(pr_url: str) -> str:
     github_token = os.getenv("GITHUB_TOKEN", "")
     if not github_token:
         return "GITHUB_TOKEN is not set."
