@@ -2,6 +2,7 @@
 Streamlit chat UI for opsAgent.
 """
 
+import json
 import os
 
 import requests
@@ -24,40 +25,56 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if msg.get("tool_calls"):
-            with st.expander(f"🔧 Tools used: {', '.join(msg['tool_calls'])}"):
+            with st.expander(f"Tools used: {', '.join(msg['tool_calls'])}"):
                 for t in msg["tool_calls"]:
                     st.code(t)
 
 # Chat input
 if prompt := st.chat_input("Ask opsAgent..."):
-    # Display user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Call backend
     with st.chat_message("assistant"):
-        with st.spinner("Thinking..."):
-            try:
-                resp = requests.post(
-                    f"{BACKEND_URL}/chat",
-                    json={"message": prompt},
-                    timeout=120,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                answer = data.get("message", "")
-                tool_calls = data.get("tool_calls", [])
-            except requests.exceptions.ConnectionError:
-                answer = f"Cannot connect to backend at `{BACKEND_URL}`. Make sure the server is running."
-                tool_calls = []
-            except Exception as e:
-                answer = f"Error: {e}"
-                tool_calls = []
+        status = st.empty()
+        answer_placeholder = st.empty()
+        answer = ""
+        tool_calls = []
 
-        st.markdown(answer)
+        try:
+            with requests.post(
+                f"{BACKEND_URL}/chat/stream",
+                json={"message": prompt},
+                stream=True,
+                timeout=1200,
+            ) as resp:
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    if not line.startswith(b"data: "):
+                        continue
+                    data_str = line[6:].decode()
+                    if data_str == "[DONE]":
+                        break
+                    event = json.loads(data_str)
+                    if event["type"] == "status":
+                        status.info(event["content"])
+                    elif event["type"] == "result":
+                        status.empty()
+                        answer = event["content"]
+                        tool_calls = event.get("tool_calls", [])
+                        answer_placeholder.markdown(answer)
+
+        except requests.exceptions.ConnectionError:
+            answer = f"Cannot connect to backend at `{BACKEND_URL}`. Make sure the server is running."
+            answer_placeholder.error(answer)
+        except Exception as e:
+            answer = f"Error: {e}"
+            answer_placeholder.error(answer)
+
         if tool_calls:
-            with st.expander(f"🔧 Tools used: {', '.join(tool_calls)}"):
+            with st.expander(f"Tools used: {', '.join(tool_calls)}"):
                 for t in tool_calls:
                     st.code(t)
 

@@ -13,6 +13,7 @@ import httpx
 import truststore
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -168,6 +169,45 @@ def chat(req: ChatRequest):
         return ChatResponse(message=results[0]["result"], tool_calls=all_tool_calls)
 
     return ChatResponse(message=synthesize(req.message, results), tool_calls=all_tool_calls)
+
+
+@app.post("/chat/stream")
+def chat_stream(req: ChatRequest):
+    """SSE streaming endpoint — sends status updates while processing, then the final result."""
+
+    def generate():
+        def sse(event_type: str, content: str, tool_calls: list[str] | None = None) -> str:
+            payload = {"type": event_type, "content": content}
+            if tool_calls is not None:
+                payload["tool_calls"] = tool_calls
+            return f"data: {json.dumps(payload)}\n\n"
+
+        subtasks = plan_subtasks(req.message)
+        behaviors = [s.get("behavior") or "none" for s in subtasks]
+        yield sse("status", f"Planning done — tasks: {', '.join(behaviors)}")
+
+        results = []
+        all_tool_calls: list[str] = []
+        context_so_far = ""
+
+        for subtask in subtasks:
+            behavior = subtask.get("behavior") or "none"
+            yield sse("status", f"Running **{behavior}**...")
+            result, tool_calls = run_subtask(req.message, subtask, context=context_so_far)
+            results.append({"behavior": behavior, "result": result})
+            all_tool_calls.extend(tool_calls)
+            context_so_far += f"\n### {behavior} result\n{result}\n"
+
+        if len(results) > 1:
+            yield sse("status", "Synthesizing results...")
+            final = synthesize(req.message, results)
+        else:
+            final = results[0]["result"]
+
+        yield sse("result", final, tool_calls=all_tool_calls)
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.get("/health")
