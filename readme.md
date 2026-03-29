@@ -20,13 +20,21 @@ GITHUB_TOKEN=   # GitHub Enterprise personal access token (repo scope)
 
 ## Start
 
+**Backend API:**
 ```bash
 uvicorn app:app --reload
 ```
 
 The API will be available at `http://localhost:8000`.
-
 Interactive docs: `http://localhost:8000/docs`
+
+**Streamlit UI:**
+```bash
+streamlit run ui.py
+```
+
+The UI will be available at `http://localhost:8501`.
+Set `BACKEND_URL` in `.env` to point to a non-default backend address.
 
 ## API
 

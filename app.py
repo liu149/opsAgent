@@ -109,7 +109,9 @@ def run_subtask(original_message: str, subtask: dict, context: str = "") -> tupl
     focus = subtask.get("focus", "")
     agent = _AGENTS.get(behavior, _DEFAULT_AGENT) if behavior else _DEFAULT_AGENT
     system_prompt = load_system_prompt(behavior, focus)
-    user_message = original_message
+
+    # Each sub-agent only handles its own focus, not the full original message
+    user_message = focus or original_message
     if context:
         user_message += f"\n\n---\nPrevious analysis:\n{context}"
 
