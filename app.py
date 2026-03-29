@@ -16,7 +16,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 
-from tools import get_weather, review_pr
+from tools import get_file_content, get_weather, review_pr, search_code_symbol
 
 load_dotenv()
 MODEL = os.getenv("AI_MODEL", "undefined")
@@ -48,7 +48,7 @@ llm = ChatOpenAI(
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 _BEHAVIORS_DIR = _PROMPTS_DIR / "behaviors"
 
-agent_executor = create_react_agent(llm, [get_weather, review_pr])
+agent_executor = create_react_agent(llm, [get_weather, review_pr, search_code_symbol, get_file_content])
 
 
 def detect_behavior(message: str) -> str | None:

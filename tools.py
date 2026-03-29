@@ -1,8 +1,22 @@
+import base64
 import os
 import re
 
 import httpx
 from langchain_core.tools import tool
+
+
+def _parse_repo_url(repo_url: str) -> tuple[str, str, str]:
+    """Returns (host, owner, repo). Raises ValueError on invalid URL."""
+    match = re.match(r"https?://([^/]+)/([^/]+)/([^/]+?)(?:\.git)?/?$", repo_url)
+    if not match:
+        raise ValueError(f"Invalid repo URL: {repo_url}")
+    return match.groups()
+
+
+def _github_headers(token: str) -> dict:
+    return {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
+
 
 @tool
 def review_pr(pr_url: str) -> str:
@@ -23,8 +37,7 @@ def review_pr(pr_url: str) -> str:
 
     host, owner, repo, pr_number = match.groups()
     api_base = f"https://{host}/api/v3"
-
-    headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+    headers = _github_headers(github_token)
 
     with httpx.Client(verify=False) as client:
         # Fetch PR metadata
@@ -43,10 +56,15 @@ def review_pr(pr_url: str) -> str:
             return f"Failed to fetch PR files: HTTP {files_resp.status_code} - {files_resp.text}"
         files = files_resp.json()
 
+    repo_url = f"https://{host}/{owner}/{repo}"
+    head_ref = pr_info.get("head", {}).get("ref", "")
+    base_ref = pr_info.get("base", {}).get("ref", "")
+
     lines = [
         f"PR #{pr_number}: {pr_info.get('title', '')}",
         f"Author: {pr_info.get('user', {}).get('login', '')}",
-        f"Base: {pr_info.get('base', {}).get('ref', '')}  ←  Head: {pr_info.get('head', {}).get('ref', '')}",
+        f"Base: {base_ref}  ←  Head: {head_ref}",
+        f"Repo URL: {repo_url}",
         f"Files changed: {len(files)}",
         "",
     ]
@@ -61,6 +79,85 @@ def review_pr(pr_url: str) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+@tool
+def search_code_symbol(symbol: str, repo_url: str) -> str:
+    """Search for a function, class, or variable definition in a GitHub repository.
+
+    Use this tool when reviewing a PR and you need to understand what a called
+    function or class does. It finds where the symbol is defined in the codebase.
+
+    symbol: the function, class, or variable name to search for.
+    repo_url: e.g. 'https://alm-github.my-company.com/org/repo'
+    """
+    github_token = os.getenv("GITHUB_TOKEN", "")
+    if not github_token:
+        return "GITHUB_TOKEN is not set."
+    try:
+        host, owner, repo = _parse_repo_url(repo_url)
+    except ValueError as e:
+        return str(e)
+
+    headers = _github_headers(github_token)
+    with httpx.Client(verify=False) as client:
+        resp = client.get(
+            f"https://{host}/api/v3/search/code",
+            headers=headers,
+            params={"q": f"{symbol} repo:{owner}/{repo}"},
+        )
+        if resp.status_code != 200:
+            return f"Search failed: HTTP {resp.status_code} - {resp.text}"
+        items = resp.json().get("items", [])
+
+    if not items:
+        return f"No results found for '{symbol}' in {owner}/{repo}."
+
+    results = [f"Found '{symbol}' in {len(items)} file(s):"]
+    for item in items[:5]:  # limit to top 5 results
+        results.append(f"- {item['path']}")
+    return "\n".join(results)
+
+
+@tool
+def get_file_content(file_path: str, repo_url: str, ref: str = None) -> str:
+    """Get the full content of a file from a GitHub repository.
+
+    Use this tool when reviewing a PR and you need the full context of a file,
+    for example to read a function definition found via search_code_symbol.
+
+    file_path: relative path in the repo, e.g. 'src/utils/helper.py'
+    repo_url: e.g. 'https://alm-github.my-company.com/org/repo'
+    ref: branch or commit SHA (default: repo default branch).
+         When reviewing a PR, pass the PR head branch ref to see the current state of the code.
+         Only pass the base branch ref if you need to compare against the pre-change version.
+         The head and base branch names are available in the output of review_pr.
+    """
+    github_token = os.getenv("GITHUB_TOKEN", "")
+    if not github_token:
+        return "GITHUB_TOKEN is not set."
+    try:
+        host, owner, repo = _parse_repo_url(repo_url)
+    except ValueError as e:
+        return str(e)
+
+    headers = _github_headers(github_token)
+    params = {"ref": ref} if ref else {}
+    with httpx.Client(verify=False) as client:
+        resp = client.get(
+            f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{file_path}",
+            headers=headers,
+            params=params,
+        )
+        if resp.status_code != 200:
+            return f"Failed to get file: HTTP {resp.status_code} - {resp.text}"
+        data = resp.json()
+
+    content = base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+    lines = content.splitlines()
+    if len(lines) > 200:
+        content = "\n".join(lines[:200]) + f"\n\n... (truncated, {len(lines)} lines total)"
+    return content
 
 
 @tool

@@ -26,6 +26,22 @@ For each issue:
   **Technical Comment:** <clear technical explanation for experienced developers>
   **Layman's Explanation:** <plain-language explanation for less experienced readers>
 
+### Gathering context beyond the diff
+
+The diff alone is often insufficient for logic and correctness review.
+When you encounter a function call, class usage, or symbol in the diff that you need to understand more deeply:
+
+1. Use `search_code_symbol` to locate where the symbol is defined in the repo.
+2. Use `get_file_content` with the PR head branch ref to read the full file content.
+
+Always pass the PR head branch as `ref` when calling `get_file_content`, so you see the current state of the code in this PR.
+The head branch name is available in the output of `review_pr`.
+
+Prioritize looking up context for:
+- Functions or methods that are called but not defined in the diff
+- Classes or interfaces that changed signatures
+- Any symbol where the diff alone is ambiguous about correctness
+
 ### Boundaries
 
 - Only review code changed in this PR (inserted, deleted, modified lines).
