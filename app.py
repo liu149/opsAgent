@@ -2,9 +2,11 @@
 FastAPI wrapper for the opsAgent demo.
 """
 
+import concurrent.futures
 import json
 import os
 import ssl
+import time
 import uuid
 from pathlib import Path
 from typing import Any
@@ -190,19 +192,32 @@ def chat_stream(req: ChatRequest):
         all_tool_calls: list[str] = []
         context_so_far = ""
 
-        for subtask in subtasks:
-            behavior = subtask.get("behavior") or "none"
-            yield sse("status", f"Running **{behavior}**...")
-            result, tool_calls = run_subtask(req.message, subtask, context=context_so_far)
-            results.append({"behavior": behavior, "result": result})
-            all_tool_calls.extend(tool_calls)
-            context_so_far += f"\n### {behavior} result\n{result}\n"
+        def wait_for(future):
+            """Yield heartbeats until future completes, then return result."""
+            while not future.done():
+                yield ": heartbeat\n\n"
+                time.sleep(5)
 
-        if len(results) > 1:
-            yield sse("status", "Synthesizing results...")
-            final = synthesize(req.message, results)
-        else:
-            final = results[0]["result"]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            for subtask in subtasks:
+                behavior = subtask.get("behavior") or "none"
+                yield sse("status", f"Running **{behavior}**...")
+
+                future = executor.submit(run_subtask, req.message, subtask, context_so_far)
+                yield from wait_for(future)
+                result, tool_calls = future.result()
+
+                results.append({"behavior": behavior, "result": result})
+                all_tool_calls.extend(tool_calls)
+                context_so_far += f"\n### {behavior} result\n{result}\n"
+
+            if len(results) > 1:
+                yield sse("status", "Synthesizing results...")
+                future = executor.submit(synthesize, req.message, results)
+                yield from wait_for(future)
+                final = future.result()
+            else:
+                final = results[0]["result"]
 
         yield sse("result", final, tool_calls=all_tool_calls)
         yield "data: [DONE]\n\n"
