@@ -66,6 +66,7 @@ def review_pr(pr_url: str) -> str:
         f"Base: {base_ref}  ←  Head: {head_ref}",
         f"Repo URL: {repo_url}",
         f"Files changed: {len(files)}",
+        f"Description: {pr_info.get('body', '').strip() or '(none)'}",
         "",
     ]
 
@@ -110,12 +111,31 @@ def search_code_symbol(symbol: str, repo_url: str) -> str:
             return f"Search failed: HTTP {resp.status_code} - {resp.text}"
         items = resp.json().get("items", [])
 
-    if not items:
-        return f"No results found for '{symbol}' in {owner}/{repo}."
+        if not items:
+            return f"No results found for '{symbol}' in {owner}/{repo}."
 
-    results = [f"Found '{symbol}' in {len(items)} file(s):"]
-    for item in items[:5]:  # limit to top 5 results
-        results.append(f"- {item['path']}")
+        results = [f"Found '{symbol}' in {len(items)} file(s):"]
+        for item in items[:5]:
+            path = item["path"]
+            results.append(f"\n### {path}")
+            # Fetch a snippet around the symbol
+            content_resp = client.get(
+                f"https://{host}/api/v3/repos/{owner}/{repo}/contents/{path}",
+                headers=headers,
+            )
+            if content_resp.status_code == 200:
+                raw = base64.b64decode(content_resp.json()["content"]).decode("utf-8", errors="replace")
+                lines_all = raw.splitlines()
+                # Find first line containing the symbol and return ±5 lines of context
+                for i, line in enumerate(lines_all):
+                    if symbol in line:
+                        start = max(0, i - 5)
+                        end = min(len(lines_all), i + 6)
+                        snippet = "\n".join(f"{start + j + 1}: {l}" for j, l in enumerate(lines_all[start:end]))
+                        results.append(f"```\n{snippet}\n```")
+                        break
+            else:
+                results.append("(could not fetch snippet)")
     return "\n".join(results)
 
 
