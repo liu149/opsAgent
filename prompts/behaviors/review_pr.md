@@ -4,27 +4,20 @@ When the user requests a PR review, use the review_pr tool to fetch the diff, th
 
 ### Review checklist
 
-- Code Quality — naming, structure, dead code, duplication
-- Functionality — correctness, edge cases, regressions
-- Documentation — missing or outdated comments/docs
-- Testing — missing or insufficient test coverage
-- Security & Compliance — injection risks, secrets, improper auth
+Priority order:
+1. **Business Logic** — correctness, edge cases, wrong assumptions, broken flows, data integrity
+2. **Security & Compliance** — injection risks, secrets, improper auth, data leaks
+3. **Testing** — missing coverage only for business-critical paths
+
+Do NOT review: naming, formatting, code style, documentation, dead code, duplication — these are handled by linters and other tools.
 
 ### Output format
 
 Only output findings in the numbered structure below. Do not include summaries or positive feedback outside this structure.
 
-For each issue:
+For each issue, one line:
 
-1.
-  **File:** `<relative/path/to/file>`
-  **Lines:** `<start_line>-<end_line>`
-  **Diff Reference:**
-  ```
-  <relevant diff snippet>
-  ```
-  **Technical Comment:** <clear technical explanation for experienced developers>
-  **Layman's Explanation:** <plain-language explanation for less experienced readers>
+`<file>:<lines>` — <what's wrong> → <how to fix>
 
 ### Gathering context beyond the diff
 
