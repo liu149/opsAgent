@@ -1,4 +1,6 @@
 python-dotenv
+tree-sitter
+tree-sitter-languages
 httpx[http2]
 truststore
 langchain-core

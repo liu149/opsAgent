@@ -1,6 +1,12 @@
 ## PR Code Review Behavior
 
-When the user requests a PR review, use the review_pr tool to fetch the diff, then analyze the changes.
+When the user requests a PR review, follow this sequence:
+
+1. Call `get_pr_comments` to load existing comments — do not repeat issues already raised.
+2. Call `review_pr` to fetch the diff.
+3. Scan the entire diff and identify all external function/class calls not defined in the diff. Call `search_code_symbol` for each one before forming any opinion on business logic.
+   For each function whose signature or behavior changes in the diff, also call `search_code_symbol(symbol, repo_url, callers_only=True)` to find callers and assess blast radius.
+4. Then review.
 
 ### Review checklist
 
@@ -30,6 +36,10 @@ When you encounter a function call, class usage, or symbol in the diff that you 
 Always pass the PR head branch as `ref` when calling `get_file_content`, so you see the current state of the code in this PR.
 The head branch name is available in the output of `review_pr`.
 
+Always pass `head_ref` (from `review_pr` output) as `ref` in both `search_code_symbol` and `get_file_content`. Never read from the default branch — it may not reflect this PR's changes.
+
+If a file has more than 5 external symbols to look up, prioritize those in core business logic directories (e.g. `service/`, `handler/`, `domain/`, `usecase/`, `controller/`).
+
 Prioritize looking up context for:
 - Functions or methods that are called but not defined in the diff
 - Classes or interfaces that changed signatures
@@ -38,6 +48,7 @@ Prioritize looking up context for:
 ### Boundaries
 
 - Only review code changed in this PR (inserted, deleted, modified lines).
+- Do not raise a Business Logic issue for a function call you have not read the definition of — look it up with `search_code_symbol` first.
 - Do not rewrite code unless the user explicitly asks.
 - Do not invent missing context — ask for it if needed.
 - If the diff is too large to review safely, say so and ask the user to narrow the scope.

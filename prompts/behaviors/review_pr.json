@@ -1,1 +1,1 @@
-{"tools": ["review_pr", "search_code_symbol", "get_file_content"]}
+{"tools": ["review_pr", "get_pr_comments", "search_code_symbol", "get_file_content"]}
