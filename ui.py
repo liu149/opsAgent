@@ -49,8 +49,15 @@ if prompt := st.chat_input("Ask opsAgent..."):
                 timeout=1200,
             ) as resp:
                 resp.raise_for_status()
+                heartbeat_count = 0
                 for line in resp.iter_lines():
                     if not line:
+                        continue
+                    if line.startswith(b": heartbeat"):
+                        # Nudge Streamlit UI to keep the WebSocket alive
+                        heartbeat_count += 1
+                        dots = "." * (heartbeat_count % 4)
+                        status.info(f"Processing{dots}")
                         continue
                     if not line.startswith(b"data: "):
                         continue
@@ -60,6 +67,8 @@ if prompt := st.chat_input("Ask opsAgent..."):
                     event = json.loads(data_str)
                     if event["type"] == "status":
                         status.info(event["content"])
+                    elif event["type"] == "error":
+                        status.error(event["content"])
                     elif event["type"] == "result":
                         status.empty()
                         answer = event["content"]

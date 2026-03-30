@@ -198,26 +198,32 @@ def chat_stream(req: ChatRequest):
                 yield ": heartbeat\n\n"
                 time.sleep(5)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            for subtask in subtasks:
-                behavior = subtask.get("behavior") or "none"
-                yield sse("status", f"Running **{behavior}**...")
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                for subtask in subtasks:
+                    behavior = subtask.get("behavior") or "none"
+                    yield sse("status", f"Running **{behavior}**...")
 
-                future = executor.submit(run_subtask, req.message, subtask, context_so_far)
-                yield from wait_for(future)
-                result, tool_calls = future.result()
+                    future = executor.submit(run_subtask, req.message, subtask, context_so_far)
+                    yield from wait_for(future)
+                    result, tool_calls = future.result()  # re-raises thread exception here
 
-                results.append({"behavior": behavior, "result": result})
-                all_tool_calls.extend(tool_calls)
-                context_so_far += f"\n### {behavior} result\n{result}\n"
+                    results.append({"behavior": behavior, "result": result})
+                    all_tool_calls.extend(tool_calls)
+                    context_so_far += f"\n### {behavior} result\n{result}\n"
 
-            if len(results) > 1:
-                yield sse("status", "Synthesizing results...")
-                future = executor.submit(synthesize, req.message, results)
-                yield from wait_for(future)
-                final = future.result()
-            else:
-                final = results[0]["result"]
+                if len(results) > 1:
+                    yield sse("status", "Synthesizing results...")
+                    future = executor.submit(synthesize, req.message, results)
+                    yield from wait_for(future)
+                    final = future.result()
+                else:
+                    final = results[0]["result"]
+
+        except Exception as e:
+            yield sse("error", f"Error: {e}")
+            yield "data: [DONE]\n\n"
+            return
 
         yield sse("result", final, tool_calls=all_tool_calls)
         yield "data: [DONE]\n\n"
